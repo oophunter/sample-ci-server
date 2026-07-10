@@ -70,7 +70,7 @@ jobs:
           ssh -i private_key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} "
             cd ~/sample-server
             npm ci --omit=dev
-            pm2 restart app || pm2 start dist/main.js --name 'sample-ci-server'
+            pm2 restart sample-ci-server || pm2 start dist/main.js --name 'sample-ci-server'
           "
           
           # Clean up the key from the runner
