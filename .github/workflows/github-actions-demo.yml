@@ -27,3 +27,52 @@ jobs:
 
       - name: Run tests
         run: npm test -- --runInBand
+
+  deploy:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+
+    steps:
+      - name: Check out repository code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build application
+        run: npm run build
+
+      - name: Deploy to EC2
+        run: |
+          echo "${{ secrets.EC2_SSH_KEY }}" > private_key.pem
+          chmod 600 private_key.pem
+          
+          # Create destination directory if it doesn't exist
+          ssh -i private_key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} "mkdir -p ~/sample-server"
+          
+          # Copy requested files to EC2
+          scp -i private_key.pem -o StrictHostKeyChecking=no -r \
+            dist \
+            package.json \
+            package-lock.json \
+            tsconfig.json \
+            tsconfig.build.json \
+            ec2-user@${{ secrets.EC2_HOST }}:~/sample-server/
+            
+          # Run npm ci and restart the application using pm2 on EC2
+          ssh -i private_key.pem -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} "
+            cd ~/sample-server
+            npm ci --omit=dev
+            pm2 restart app || pm2 start dist/main.js --name 'sample-ci-server'
+          "
+          
+          # Clean up the key from the runner
+          rm -f private_key.pem
+
